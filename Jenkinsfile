@@ -117,7 +117,7 @@ pipeline {
                         west build -p always -b "$BOARD" \
                             -d "$WORKSPACE/build" --sysbuild "$WORKSPACE/app" \
                             -- -DZEPHYR_EXTRA_MODULES=/ws/ncs-zigbee \
-                               -DSB_CONFIG_BOOT_SIGNATURE_KEY_FILE="$SIGNING_KEY"
+                               -DSB_CONFIG_BOOT_SIGNATURE_KEY_FILE=\"$SIGNING_KEY\"
                     '''
                 }
                 // Trust, then verify — in that order, every run:
@@ -129,7 +129,7 @@ pipeline {
                 // — the same code that just signed the image.
                         sh 'python3 /ws/bootloader/mcuboot/scripts/imgtool.py verify -k keys/product-key.pub.pem build/app/zephyr/zephyr.signed.bin'
                         stash name: 'signed-image',
-                              includes: 'build/app/zephyr/zephyr.signed.bin'
+                              includes: 'build/app/zephyr/zephyr.signed.bin,build/app/zephyr/zephyr.signed.hex'
                     }
                 }
 
@@ -187,7 +187,27 @@ pipeline {
             }
             steps {
                 unstash 'signed-image'
-                sh 'python3 -m pytest tests/hil --junitxml=hil-results.xml'
+                // The flashing contract, stated in full: the
+                // stage flashes the exact signed .hex THIS run
+                // built (a .hex carries its load addresses; the
+                // .bin stays the OTA/manifest artifact), at the
+                // rig's serial port ($HIL_PORT, set on the hil
+                // node), and expects the banner to report THIS
+                // run's stamped version. --require-hardware turns
+                // any missing piece into a FAILED stage — never
+                // a green stage full of skips that tested nothing.
+                sh '''
+                    if [ -z "${HIL_PORT:-}" ]; then
+                        echo "HIL_PORT is not set on this node: no rig, no pass" >&2
+                        exit 1
+                    fi
+                    python3 -m pytest tests/hil \
+                        --firmware build/app/zephyr/zephyr.signed.hex \
+                        --port "$HIL_PORT" \
+                        --expect-version "$PRODUCT_VERSION" \
+                        --require-hardware \
+                        --junitxml=hil-results.xml
+                '''
             }
             post {
                 always { junit 'hil-results.xml' }

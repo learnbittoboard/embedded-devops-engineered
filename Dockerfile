@@ -1,4 +1,5 @@
 # The course toolchain image — Embedded DevOps, Engineered.
+# (Published to GHCR by .github/workflows/toolchain-image.yml — Chapter 11.)
 #
 # This file IS the build machine, as source code: the exact compiler,
 # SDK and Python tools that build the product, frozen into an image
@@ -10,7 +11,7 @@
 # Base image pinned by digest, not tag: a tag can move; a digest is
 # the image. (Chapter 3 shows how this digest was captured and how
 # to refresh it deliberately.)
-FROM ubuntu:24.04@sha256:8f9b7b17c30ab84eb0a7e397cc432cd78c819761becafcf86ad9c0a3666fe75f
+FROM ubuntu:24.04@sha256:68ee22004a9109b44973313b02ff7b1de250f1de0f5ecb628d73f579aaff33ac
 
 ENV DEBIAN_FRONTEND=noninteractive
 

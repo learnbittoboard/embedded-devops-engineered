@@ -407,7 +407,12 @@ static int cmd_presence(const struct shell *sh, size_t argc, char **argv)
 		shell_print(sh, "presence : no");
 		shell_print(sh, "distance : —");
 	} else {
-		shell_print(sh, "presence : YES (%s)", target_words[r.target]);
+		/* Defensive guard at the lookup: the parser validates the
+		 * target before publishing, but a lookup table is never
+		 * indexed by a value that arrived over a wire without a
+		 * bounds check at the point of use as well.
+		 */
+		shell_print(sh, "presence : YES (%s)", target_words[(r.target < 4) ? r.target : 0]);
 		shell_print(sh, "distance : %u cm", ld2410_headline_distance_cm(&r));
 	}
 

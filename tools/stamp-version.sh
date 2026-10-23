@@ -7,11 +7,17 @@
 # because the manual bump is where release mistakes are born.
 #
 #   HEAD is exactly tag vX.Y.Z   ->  version X.Y.Z, tweak 0
-#   N commits past tag vX.Y.Z    ->  version X.Y.(Z+1), tweak N
-#                                    (a dev build: sorts AFTER the
-#                                    release it follows, before the
-#                                    release it precedes — MCUboot's
-#                                    version comparison stays sane)
+#   N commits past tag vX.Y.Z    ->  version X.Y.(Z+1), tweak N,
+#                                    display X.Y.(Z+1)-dev.N
+#                                    (a dev build: its X.Y.Z sorts
+#                                    AFTER the release it follows
+#                                    and is not overtaken by the
+#                                    release it precedes — that
+#                                    release carries the same X.Y.Z
+#                                    with tweak reset to 0, and
+#                                    MCUboot's default comparison
+#                                    reads X.Y.Z only, so the
+#                                    sequence never goes backwards)
 #   no release tags yet           ->  version 0.1.0, tweak = commit count
 #
 # Only tags shaped like a release (v<digit>…) count. The --match
@@ -19,6 +25,25 @@
 # other tags (the course's own chapter tags, experiment tags), and
 # git describe happily returns the NEAREST tag of any shape. Feed
 # it "ch11" and the version arithmetic below stops being funny.
+#
+# THE CANONICAL DISPLAY VERSION is the string this script prints:
+# X.Y.Z at a tag, X.Y.Z-dev.N between tags. Every witness must
+# carry exactly this string — the boot banner, the release
+# manifest, the pipeline's PRODUCT_VERSION, and the HIL suite's
+# --expect-version. They agree because they are all stamped from
+# this one output:
+#
+#   * app/VERSION's EXTRAVERSION carries the display suffix:
+#     Zephyr composes APP_VERSION_STRING as X.Y.Z when
+#     EXTRAVERSION is empty and X.Y.Z-<EXTRAVERSION> when it is
+#     not — so EXTRAVERSION = dev.N makes the banner print the
+#     display version verbatim. (Leaving EXTRAVERSION empty was
+#     the old bug: the banner printed plain X.Y.Z while every
+#     other witness said X.Y.Z-dev.N, and the HIL version check
+#     could never pass on a dev build.)
+#   * The imgtool sign stamp stays the separate NUMERIC form
+#     X.Y.Z+T: that is what MCUboot and the OTA header compare,
+#     and it is never displayed to a human as "the version".
 #
 # The version is stamped into EVERY input the build reads —
 # and this product reads two, on purpose. Course 1 split them
@@ -54,15 +79,18 @@ if desc=$(git describe --tags --long --match 'v[0-9]*' 2>/dev/null); then
 	patch=${rest#*.}
 	if [ "$ahead" -eq 0 ]; then
 		display="$major.$minor.$patch"
+		extra=""
 	else
 		patch=$((patch + 1))
 		display="$major.$minor.$patch-dev.$ahead"
+		extra="dev.$ahead"
 	fi
 	tweak=$ahead
 else
 	major=0; minor=1; patch=0
 	tweak=$(git rev-list --count HEAD)
 	display="$major.$minor.$patch-dev.$tweak"
+	extra="dev.$tweak"
 	echo "stamp-version: no git tag found — pre-release versioning" >&2
 fi
 
@@ -71,7 +99,7 @@ VERSION_MAJOR = $major
 VERSION_MINOR = $minor
 PATCHLEVEL = $patch
 VERSION_TWEAK = $tweak
-EXTRAVERSION =
+EXTRAVERSION = $extra
 EOF
 
 # The second knob: the imgtool sign stamp in prj.conf. Its value
