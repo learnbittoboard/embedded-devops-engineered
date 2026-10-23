@@ -89,26 +89,25 @@
 
 #include "ld2410.h"
 
-
 /* Device endpoint — the same number Chapters 6–7 use throughout. */
-#define SENSOR_ENDPOINT                     10
+#define SENSOR_ENDPOINT 10
 
 /* Type of power sources available for the device.
  * For possible values see section 3.2.2.2.8 of ZCL specification.
  */
-#define SENSOR_INIT_BASIC_POWER_SOURCE      ZB_ZCL_BASIC_POWER_SOURCE_DC_SOURCE
+#define SENSOR_INIT_BASIC_POWER_SOURCE ZB_ZCL_BASIC_POWER_SOURCE_DC_SOURCE
 
 /* LED indicating that device successfully joined Zigbee network. */
-#define ZIGBEE_NETWORK_STATE_LED            DK_LED3
+#define ZIGBEE_NETWORK_STATE_LED DK_LED3
 
 /* LED used for device identification. */
-#define IDENTIFY_LED                        DK_LED4
+#define IDENTIFY_LED DK_LED4
 
 /* Button used to enter the Identify mode. */
-#define IDENTIFY_MODE_BUTTON                DK_BTN4_MSK
+#define IDENTIFY_MODE_BUTTON DK_BTN4_MSK
 
 /* A long press of the same button is the factory reset. */
-#define FACTORY_RESET_BUTTON                IDENTIFY_MODE_BUTTON
+#define FACTORY_RESET_BUTTON IDENTIFY_MODE_BUTTON
 
 LOG_MODULE_REGISTER(app, LOG_LEVEL_INF);
 
@@ -127,31 +126,19 @@ struct zb_device_ctx {
 /* Zigbee device application context storage. */
 static struct zb_device_ctx dev_ctx;
 
-ZB_ZCL_DECLARE_IDENTIFY_ATTRIB_LIST(
-	identify_attr_list,
-	&dev_ctx.identify_attr.identify_time);
+ZB_ZCL_DECLARE_IDENTIFY_ATTRIB_LIST(identify_attr_list, &dev_ctx.identify_attr.identify_time);
 
-ZB_ZCL_DECLARE_BASIC_ATTRIB_LIST(
-	basic_attr_list,
-	&dev_ctx.basic_attr.zcl_version,
-	&dev_ctx.basic_attr.power_source);
+ZB_ZCL_DECLARE_BASIC_ATTRIB_LIST(basic_attr_list, &dev_ctx.basic_attr.zcl_version,
+				 &dev_ctx.basic_attr.power_source);
 
-ZB_ZCL_DECLARE_OCCUPANCY_SENSING_ATTRIB_LIST(
-	occupancy_attr_list,
-	&dev_ctx.occupancy,
-	&dev_ctx.occupancy_sensor_type,
-	&dev_ctx.occupancy_sensor_type_bitmap);
+ZB_ZCL_DECLARE_OCCUPANCY_SENSING_ATTRIB_LIST(occupancy_attr_list, &dev_ctx.occupancy,
+					     &dev_ctx.occupancy_sensor_type,
+					     &dev_ctx.occupancy_sensor_type_bitmap);
 
-ZB_DECLARE_OCCUPANCY_SENSOR_CLUSTER_LIST(
-	sensor_clusters,
-	basic_attr_list,
-	identify_attr_list,
-	occupancy_attr_list);
+ZB_DECLARE_OCCUPANCY_SENSOR_CLUSTER_LIST(sensor_clusters, basic_attr_list, identify_attr_list,
+					 occupancy_attr_list);
 
-ZB_DECLARE_OCCUPANCY_SENSOR_EP(
-	sensor_ep,
-	SENSOR_ENDPOINT,
-	sensor_clusters);
+ZB_DECLARE_OCCUPANCY_SENSOR_EP(sensor_ep, SENSOR_ENDPOINT, sensor_clusters);
 
 /* Chapter 10: the device context gains the FOTA library's
  * endpoint. The library owns and defines zigbee_fota_client_ep
@@ -162,11 +149,7 @@ ZB_DECLARE_OCCUPANCY_SENSOR_EP(
  */
 extern zb_af_endpoint_desc_t zigbee_fota_client_ep;
 
-ZBOSS_DECLARE_DEVICE_CTX_2_EP(
-	sensor_ctx,
-	zigbee_fota_client_ep,
-	sensor_ep);
-
+ZBOSS_DECLARE_DEVICE_CTX_2_EP(sensor_ctx, zigbee_fota_client_ep, sensor_ep);
 
 /**@brief Function for initializing all clusters attributes. */
 static void app_clusters_attr_init(void)
@@ -176,18 +159,15 @@ static void app_clusters_attr_init(void)
 	dev_ctx.basic_attr.power_source = SENSOR_INIT_BASIC_POWER_SOURCE;
 
 	/* Identify cluster attributes data. */
-	dev_ctx.identify_attr.identify_time =
-		ZB_ZCL_IDENTIFY_IDENTIFY_TIME_DEFAULT_VALUE;
+	dev_ctx.identify_attr.identify_time = ZB_ZCL_IDENTIFY_IDENTIFY_TIME_DEFAULT_VALUE;
 
 	/* Occupancy Sensing attributes — see Step 1 for why an
 	 * mmWave radar honestly reports sensor type ULTRASONIC:
 	 * the ZCL enum has no radar value, and an active wave
 	 * sensor belongs to the ultrasonic family, not to PIR.
 	 */
-	dev_ctx.occupancy =
-		ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED;
-	dev_ctx.occupancy_sensor_type =
-		ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_SENSOR_TYPE_ULTRASONIC;
+	dev_ctx.occupancy = ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED;
+	dev_ctx.occupancy_sensor_type = ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_SENSOR_TYPE_ULTRASONIC;
 	dev_ctx.occupancy_sensor_type_bitmap =
 		ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_SENSOR_TYPE_BITMAP_ULTRASONIC;
 }
@@ -209,24 +189,18 @@ static void publish_occupancy(zb_bufid_t bufid)
 {
 	zb_uint8_t occupied = (zb_uint8_t)bufid;
 
-	ZB_ZCL_SET_ATTRIBUTE(
-		SENSOR_ENDPOINT,
-		ZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING,
-		ZB_ZCL_CLUSTER_SERVER_ROLE,
-		ZB_ZCL_ATTR_OCCUPANCY_SENSING_OCCUPANCY_ID,
-		&occupied,
-		ZB_FALSE);
+	ZB_ZCL_SET_ATTRIBUTE(SENSOR_ENDPOINT, ZB_ZCL_CLUSTER_ID_OCCUPANCY_SENSING,
+			     ZB_ZCL_CLUSTER_SERVER_ROLE, ZB_ZCL_ATTR_OCCUPANCY_SENSING_OCCUPANCY_ID,
+			     &occupied, ZB_FALSE);
 
-	LOG_INF("Occupancy attribute -> %s",
-		occupied ? "OCCUPIED" : "UNOCCUPIED");
+	LOG_INF("Occupancy attribute -> %s", occupied ? "OCCUPIED" : "UNOCCUPIED");
 }
 
 /* ------------------------------------------------------------------ */
 /* The sensor glue — driver readings become attribute writes.          */
 /* ------------------------------------------------------------------ */
 
-static const struct device *const sensor_uart =
-	DEVICE_DT_GET(DT_NODELABEL(uart1));
+static const struct device *const sensor_uart = DEVICE_DT_GET(DT_NODELABEL(uart1));
 
 static struct k_work publish_work;
 
@@ -280,26 +254,16 @@ static void send_on_off(zb_bufid_t bufid, zb_uint16_t cmd_id)
 	zb_uint16_t addr_from_binding = 0;
 
 	if (cmd_id == ZB_ZCL_CMD_ON_OFF_ON_ID) {
-		ZB_ZCL_ON_OFF_SEND_ON_REQ(
-			bufid,
-			addr_from_binding,
-			ZB_APS_ADDR_MODE_DST_ADDR_ENDP_NOT_PRESENT,
-			0,
-			SENSOR_ENDPOINT,
-			ZB_AF_HA_PROFILE_ID,
-			ZB_ZCL_DISABLE_DEFAULT_RESPONSE,
-			NULL);
+		ZB_ZCL_ON_OFF_SEND_ON_REQ(bufid, addr_from_binding,
+					  ZB_APS_ADDR_MODE_DST_ADDR_ENDP_NOT_PRESENT, 0,
+					  SENSOR_ENDPOINT, ZB_AF_HA_PROFILE_ID,
+					  ZB_ZCL_DISABLE_DEFAULT_RESPONSE, NULL);
 		LOG_INF("On/Off: sent ON via binding");
 	} else {
-		ZB_ZCL_ON_OFF_SEND_OFF_REQ(
-			bufid,
-			addr_from_binding,
-			ZB_APS_ADDR_MODE_DST_ADDR_ENDP_NOT_PRESENT,
-			0,
-			SENSOR_ENDPOINT,
-			ZB_AF_HA_PROFILE_ID,
-			ZB_ZCL_DISABLE_DEFAULT_RESPONSE,
-			NULL);
+		ZB_ZCL_ON_OFF_SEND_OFF_REQ(bufid, addr_from_binding,
+					   ZB_APS_ADDR_MODE_DST_ADDR_ENDP_NOT_PRESENT, 0,
+					   SENSOR_ENDPOINT, ZB_AF_HA_PROFILE_ID,
+					   ZB_ZCL_DISABLE_DEFAULT_RESPONSE, NULL);
 		LOG_INF("On/Off: sent OFF via binding");
 	}
 }
@@ -318,15 +282,12 @@ static void request_bulb(bool on)
 		 * keep the belief UNKNOWN, and let the next
 		 * transition retry — honesty over bookkeeping.
 		 */
-		LOG_WRN("On/Off: not joined - %s command skipped",
-			on ? "ON" : "OFF");
+		LOG_WRN("On/Off: not joined - %s command skipped", on ? "ON" : "OFF");
 		return;
 	}
 
 	zb_buf_get_out_delayed_ext(send_on_off,
-				   on ? ZB_ZCL_CMD_ON_OFF_ON_ID :
-					ZB_ZCL_CMD_ON_OFF_OFF_ID,
-				   0);
+				   on ? ZB_ZCL_CMD_ON_OFF_ON_ID : ZB_ZCL_CMD_ON_OFF_OFF_ID, 0);
 	bulb_belief = on ? BULB_COMMANDED_ON : BULB_COMMANDED_OFF;
 }
 
@@ -368,9 +329,8 @@ static void publish_handler(struct k_work *work)
 
 	bool occupied = (r.target != LD2410_TARGET_NONE);
 
-	zb_uint8_t attr = occupied ?
-		ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_OCCUPIED :
-		ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED;
+	zb_uint8_t attr = occupied ? ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_OCCUPIED
+				   : ZB_ZCL_OCCUPANCY_SENSING_OCCUPANCY_UNOCCUPIED;
 
 	ZB_SCHEDULE_APP_CALLBACK(publish_occupancy, attr);
 
@@ -395,10 +355,8 @@ static void publish_handler(struct k_work *work)
 		 */
 		if (bulb_belief != BULB_COMMANDED_OFF && !off_pending) {
 			off_pending = true;
-			off_deadline_ms = k_uptime_get() +
-				CONFIG_OCCUPANCY_OFF_DELAY_SEC * 1000LL;
-			k_work_schedule(&off_delay_work,
-					K_SECONDS(CONFIG_OCCUPANCY_OFF_DELAY_SEC));
+			off_deadline_ms = k_uptime_get() + CONFIG_OCCUPANCY_OFF_DELAY_SEC * 1000LL;
+			k_work_schedule(&off_delay_work, K_SECONDS(CONFIG_OCCUPANCY_OFF_DELAY_SEC));
 			LOG_INF("On/Off: room empty - OFF in %d s unless presence returns",
 				CONFIG_OCCUPANCY_OFF_DELAY_SEC);
 		}
@@ -431,9 +389,7 @@ static void on_reading(const struct ld2410_reading *r, void *user_data)
 /* it now also shows what the NETWORK believes (the attribute).         */
 /* ------------------------------------------------------------------ */
 
-static const char *const target_words[] = {
-	"nobody", "moving", "stationary", "moving + stationary"
-};
+static const char *const target_words[] = {"nobody", "moving", "stationary", "moving + stationary"};
 
 static int cmd_presence(const struct shell *sh, size_t argc, char **argv)
 {
@@ -452,32 +408,33 @@ static int cmd_presence(const struct shell *sh, size_t argc, char **argv)
 		shell_print(sh, "distance : —");
 	} else {
 		shell_print(sh, "presence : YES (%s)", target_words[r.target]);
-		shell_print(sh, "distance : %u cm",
-			    ld2410_headline_distance_cm(&r));
+		shell_print(sh, "distance : %u cm", ld2410_headline_distance_cm(&r));
 	}
 
-	shell_print(sh, "attribute: Occupancy = %u (%s)",
-		    dev_ctx.occupancy,
+	shell_print(sh, "attribute: Occupancy = %u (%s)", dev_ctx.occupancy,
 		    dev_ctx.occupancy ? "OCCUPIED" : "UNOCCUPIED");
 	shell_print(sh, "bulb     : last commanded %s",
-		    bulb_belief == BULB_COMMANDED_ON ? "ON" :
-		    bulb_belief == BULB_COMMANDED_OFF ? "OFF" : "UNKNOWN");
+		    bulb_belief == BULB_COMMANDED_ON    ? "ON"
+		    : bulb_belief == BULB_COMMANDED_OFF ? "OFF"
+							: "UNKNOWN");
 	if (off_pending) {
 		int64_t left_ms = off_deadline_ms - k_uptime_get();
 
 		shell_print(sh, "off timer: OFF in %lld s unless presence returns",
 			    left_ms > 0 ? left_ms / 1000 : 0);
 	}
-	shell_print(sh, "frames   : %u parsed, %u resyncs, %u dropped bytes, "
+	shell_print(sh,
+		    "frames   : %u parsed, %u resyncs, %u dropped bytes, "
 		    "%u engineering frames",
 		    s.frames_ok, s.resyncs, s.rx_dropped, s.eng_frames);
 
 	return 0;
 }
 
-SHELL_CMD_REGISTER(presence, NULL,
-		   "Show live LD2410 presence, driver statistics, the Occupancy attribute, and bulb state",
-		   cmd_presence);
+SHELL_CMD_REGISTER(
+	presence, NULL,
+	"Show live LD2410 presence, driver statistics, the Occupancy attribute, and bulb state",
+	cmd_presence);
 
 /**@brief Function to toggle the identify LED
  *
@@ -521,10 +478,9 @@ static void start_identifying(zb_bufid_t bufid)
 
 	if (ZB_JOINED()) {
 		if (dev_ctx.identify_attr.identify_time ==
-		ZB_ZCL_IDENTIFY_IDENTIFY_TIME_DEFAULT_VALUE) {
+		    ZB_ZCL_IDENTIFY_IDENTIFY_TIME_DEFAULT_VALUE) {
 
-			zb_ret_t zb_err_code = zb_bdb_finding_binding_target(
-				SENSOR_ENDPOINT);
+			zb_ret_t zb_err_code = zb_bdb_finding_binding_target(SENSOR_ENDPOINT);
 
 			if (zb_err_code == RET_OK) {
 				LOG_INF("Enter identify mode");
@@ -557,7 +513,7 @@ static void button_changed(uint32_t button_state, uint32_t has_changed)
 			if (was_factory_reset_done()) {
 				/* The long press was for Factory Reset */
 				LOG_DBG("After Factory Reset - ignore button release");
-			} else   {
+			} else {
 				/* Button released before Factory Reset */
 
 				/* Start identification mode */
@@ -644,8 +600,7 @@ static void zcl_device_cb(zb_bufid_t bufid)
 	zb_zcl_device_callback_param_t *device_cb_param =
 		ZB_BUF_GET_PARAM(bufid, zb_zcl_device_callback_param_t);
 
-	if (device_cb_param->device_cb_id ==
-	    ZB_ZCL_OTA_UPGRADE_VALUE_CB_ID) {
+	if (device_cb_param->device_cb_id == ZB_ZCL_OTA_UPGRADE_VALUE_CB_ID) {
 		zigbee_fota_zcl_cb(bufid);
 	} else {
 		device_cb_param->status = RET_NOT_IMPLEMENTED;
@@ -678,7 +633,8 @@ void zboss_signal_handler(zb_bufid_t bufid)
 				APP_VERSION_STRING);
 		} else {
 			LOG_WRN("boot_write_img_confirmed() failed (%d) - "
-				"this image is still on trial", err);
+				"this image is still on trial",
+				err);
 		}
 		image_confirmed = true;
 	}

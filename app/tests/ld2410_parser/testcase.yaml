@@ -1,0 +1,13 @@
+tests:
+  ld2410.parser:
+    tags:
+      - ld2410
+      - parser
+      - unit
+    # The 64-bit native_sim variant: the default 32-bit variant
+    # needs a multilib host runtime and dies silently without it
+    # (Chapter 6 tells the whole story).
+    platform_allow:
+      - native_sim/native/64
+    integration_platforms:
+      - native_sim/native/64

@@ -1,42 +1,71 @@
-// Jenkinsfile — the factory's first product (Chapter 5 state).
+// Jenkinsfile — Chapter 6 state: gates and tests join the pipeline.
 //
-// The pipeline is CODE: it lives in the repo, is reviewed like
-// firmware, and its history is the repo's history. Three honest
-// stages: build the product inside the pinned toolchain image,
-// archive what the build made. Chapter 6 adds the gates and tests,
-// Chapter 7 the matrix and the version, Chapter 8 the signature —
-// this file grows; it is never replaced.
+// Order is economics: the fastest failures run first. A format
+// violation costs seconds, a unit test a minute, the full firmware
+// build several — so the pipeline asks its questions cheapest-first,
+// and a red build tells you at which stage to start reading.
 pipeline {
     agent none
 
     environment {
-        // The toolchain image from Chapters 2-3. Pinned by tag here;
-        // the manifest (Chapter 7) records the digest it resolved to.
         TOOLCHAIN_IMAGE = 'toolchain:1.0.0-ncs3.4.1'
-        // Your Course 1 workspace ON THE JENKINS MACHINE — the NCS
-        // tree the build mounts at /ws. Set this to your path
-        // (Chapter 5, step 2). The image deliberately does not
-        // contain the workspace: code is mounted, tools are baked.
         NCS_WS = '/home/jenkins/ncs-course'
     }
 
     stages {
-        stage('Build firmware') {
+        stage('Gates') {
             agent {
                 docker {
                     image "${TOOLCHAIN_IMAGE}"
-                    // Mount the NCS workspace; the container's
-                    // builder user owns what it writes into the
-                    // Jenkins workspace, so artifacts are not
-                    // root-owned on the controller.
                     args "-v ${NCS_WS}:/ws"
                 }
             }
             steps {
-                // west must run from inside the workspace (it finds
-                // the tree by walking up from the cwd); the app and
-                // the build dir live in the Jenkins workspace, which
-                // the docker agent mounts at the same path.
+                // Format: the codebase took its one-time reformat
+                // commit in Chapter 6's lab; from here the gate
+                // holds the line. Static analysis: scoped to the
+                // parser module — start where it is clean, expand
+                // deliberately (the chapter explains why).
+                sh 'clang-format --dry-run --Werror app/src/*.c app/src/*.h app/tests/ld2410_parser/src/*.c'
+                sh 'cppcheck --enable=warning,performance,portability --error-exitcode=1 --suppress=missingIncludeSystem --inline-suppr app/src/ld2410_parser.c'
+            }
+        }
+
+        stage('Unit tests') {
+            agent {
+                docker {
+                    image "${TOOLCHAIN_IMAGE}"
+                    args "-v ${NCS_WS}:/ws"
+                }
+            }
+            steps {
+                // The 64-bit native_sim — the 32-bit variant needs
+                // a multilib host runtime and dies silently without
+                // it (Chapter 6). The outdir is a SUBDIRECTORY of
+                // the mounted workspace: Twister recycles its
+                // outdir, and a mount root cannot be recycled.
+                sh '''
+                    cd /ws
+                    west twister -T "$WORKSPACE/app/tests" \
+                        -p native_sim/native/64 \
+                        --outdir "$WORKSPACE/twister-out"
+                '''
+            }
+            post {
+                always {
+                    junit 'twister-out/twister.xml'
+                }
+            }
+        }
+
+        stage('Build firmware') {
+            agent {
+                docker {
+                    image "${TOOLCHAIN_IMAGE}"
+                    args "-v ${NCS_WS}:/ws"
+                }
+            }
+            steps {
                 sh '''
                     cd /ws
                     west build -p always -b nrf52840dk/nrf52840 \
@@ -49,12 +78,6 @@ pipeline {
         stage('Archive') {
             agent any
             steps {
-                // Sysbuild layout: one directory per image under
-                // the build root — app/zephyr/ for the product,
-                // mcuboot/zephyr/ for the bootloader. The signed
-                // image is the product; the ELF is its debug twin;
-                // the DFU zip and the .zigbee package sit at the
-                // build root.
                 archiveArtifacts artifacts: 'build/app/zephyr/zephyr.signed.bin,build/app/zephyr/zephyr.signed.hex,build/app/zephyr/zephyr.elf,build/dfu_application.zip,build/*.zigbee',
                                  fingerprint: true
             }

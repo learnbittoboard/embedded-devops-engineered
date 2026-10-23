@@ -37,10 +37,10 @@ extern "C" {
 
 /* Target state, exactly as the module reports it. */
 enum ld2410_target {
-	LD2410_TARGET_NONE = 0,		/* nobody detected            */
-	LD2410_TARGET_MOVING = 1,	/* a moving target only       */
-	LD2410_TARGET_STATIONARY = 2,	/* a still target only        */
-	LD2410_TARGET_BOTH = 3,		/* moving AND still targets   */
+	LD2410_TARGET_NONE = 0,       /* nobody detected            */
+	LD2410_TARGET_MOVING = 1,     /* a moving target only       */
+	LD2410_TARGET_STATIONARY = 2, /* a still target only        */
+	LD2410_TARGET_BOTH = 3,       /* moving AND still targets   */
 };
 
 /* One parsed presence report. Distances in centimetres,
@@ -52,15 +52,15 @@ struct ld2410_reading {
 	uint8_t move_energy;
 	uint16_t still_distance_cm;
 	uint8_t still_energy;
-	uint16_t detect_distance_cm;	/* the module's max-of-two */
-	int64_t timestamp_ms;		/* k_uptime_get() at parse time */
+	uint16_t detect_distance_cm; /* the module's max-of-two */
+	int64_t timestamp_ms;        /* k_uptime_get() at parse time */
 };
 
 struct ld2410_stats {
-	uint32_t frames_ok;		/* valid basic reports parsed */
-	uint32_t resyncs;		/* sequences abandoned        */
-	uint32_t eng_frames;		/* engineering-mode frames (counted, not decoded) */
-	uint32_t rx_dropped;		/* bytes lost to a full ring buffer */
+	uint32_t frames_ok;  /* valid basic reports parsed */
+	uint32_t resyncs;    /* sequences abandoned        */
+	uint32_t eng_frames; /* engineering-mode frames (counted, not decoded) */
+	uint32_t rx_dropped; /* bytes lost to a full ring buffer */
 };
 
 /*
@@ -68,8 +68,7 @@ struct ld2410_stats {
  * `reading` is valid only for the duration of the call — copy
  * what you need (it is a small struct; copy the whole thing).
  */
-typedef void (*ld2410_callback_t)(const struct ld2410_reading *reading,
-				  void *user_data);
+typedef void (*ld2410_callback_t)(const struct ld2410_reading *reading, void *user_data);
 
 /*
  * Start the driver on an already-enabled UART device (see the
@@ -83,8 +82,7 @@ typedef void (*ld2410_callback_t)(const struct ld2410_reading *reading,
  * sensor, one driver instance — this module is deliberately a
  * singleton, like the hardware it serves.
  */
-int ld2410_start(const struct device *uart, ld2410_callback_t cb,
-		 void *user_data);
+int ld2410_start(const struct device *uart, ld2410_callback_t cb, void *user_data);
 
 /* Copy out the most recent valid reading. Returns false (and
  * touches nothing) if no valid frame has arrived yet.
