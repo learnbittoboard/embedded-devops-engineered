@@ -1,0 +1,50 @@
+/*
+ * Copyright (c) 2025 Nordic Semiconductor ASA
+ *
+ * SPDX-License-Identifier: LicenseRef-Nordic-5-Clause
+ */
+
+#include <nrf52840_partitions.dtsi>
+
+/*
+ * Chapter 9 addition: the FOTA flash layout. The course
+ * layout's slot 0 spans almost the whole internal flash,
+ * which leaves a bootloader nowhere to live; this second
+ * include (the layout Nordic ships for FOTA on this board)
+ * re-carves the map: boot partition 64 KB at the base,
+ * slot 0 = 916 KB internal, slot 1 = 916 KB in the DK's
+ * external QSPI flash. MCUboot gets the same layout through
+ * sysbuild/mcuboot/'s own overlay — both images must agree
+ * on the map, always.
+ */
+#include <ext_flash/nrf52840dk_partitions.dtsi>
+
+/ {
+	chosen {
+		ncs,zigbee-timer = &timer2;
+		/* Chapter 9: the cable-DFU channel. The mcumgr SMP
+		 * server (prj.conf) shares the console UART — the
+		 * standard smp_svr arrangement: logs and DFU on the
+		 * port you already have open.
+		 */
+		zephyr,uart-mcumgr = &uart0;
+	};
+};
+
+&timer2 {
+	status = "okay";
+};
+
+/*
+ * Chapter 7, Step 2 addition: the LD2410's UART.
+ *
+ * uart1 (RX P1.01, TX P1.02) ships disabled in the SoC; enabling
+ * it is this block's whole job — the same overlay Chapter 4 used.
+ * The baud rate is NOT set here: the module's 256,000 baud is
+ * absent from Zephyr's devicetree baud table for this chip, so
+ * the driver sets the UARTE divider register directly (the full
+ * story is Chapter 4's fix F3; ld2410.c owns the quirk).
+ */
+&uart1 {
+	status = "okay";
+};

@@ -1,0 +1,18 @@
+/*
+ * The bootloader must agree with the application about the
+ * flash map, so it gets the same two partition files: the
+ * course layout plus the ext-flash FOTA layout (boot 64 KB,
+ * slot 0 = 916 KB internal, slot 1 = 916 KB in the DK's
+ * external QSPI flash). The secondary slot lives in external
+ * flash, so the bootloader also needs the QSPI NOR driver —
+ * configured in this folder's .conf file.
+ */
+
+#include <nrf52840_partitions.dtsi>
+#include <ext_flash/nrf52840dk_partitions.dtsi>
+
+/ {
+	chosen {
+		zephyr,code-partition = &boot_partition;
+	};
+};

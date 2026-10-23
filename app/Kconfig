@@ -1,0 +1,35 @@
+# Chapters 7–8 sensor apps — the application Kconfig.
+#
+# Two jobs: this product's first real knob (below), and the
+# LD2410 log template at the bottom. Per-module log-level symbols
+# for our driver exist only where a Kconfig file instantiates
+# Zephyr's log-config template for that module name (Chapter 2,
+# Step 3) — that is what lets prj.conf aim the driver's log
+# level without touching the driver.
+
+menu "Occupancy product behaviour"
+
+config OCCUPANCY_OFF_DELAY_SEC
+	int "Seconds of continuous no-presence before the bulb is switched off"
+	default 30
+	range 0 3600
+	help
+	  The occupied-to-unoccupied hold time of the product: when
+	  the room empties, the bulb stays on for this long before
+	  the Off command is sent. Semantically this is the ZCL
+	  Occupancy Sensing cluster's UltrasonicOccupiedToUnoccupied-
+	  Delay attribute (0x0020); ZBOSS's standard attribute list
+	  for the cluster does not declare the delay attributes, so
+	  the product implements the same policy in its glue —
+	  configurable here, settable per build in prj.conf:
+	      CONFIG_OCCUPANCY_OFF_DELAY_SEC=120
+	  Zero means "off the moment the room reads empty" — legal,
+	  and a fine way to learn why the delay exists.
+
+endmenu
+
+module = LD2410
+module-str = HLK-LD2410 driver (Chapters 4 + 7)
+source "subsys/logging/Kconfig.template.log_config"
+
+source "Kconfig.zephyr"

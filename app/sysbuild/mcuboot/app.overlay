@@ -1,0 +1,12 @@
+/*
+ * The bootloader image's own devicetree view: MCUboot links
+ * into the boot partition (the FOTA layout grants it 64 KB at
+ * the base of the internal flash) — not into an application
+ * slot.
+ */
+
+/ {
+	chosen {
+		zephyr,code-partition = &boot_partition;
+	};
+};
