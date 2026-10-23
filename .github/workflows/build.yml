@@ -33,6 +33,14 @@ jobs:
     runs-on: ubuntu-24.04
     container:
       image: ghcr.io/${{ github.repository_owner }}/toolchain:1.0.0-ncs3.4.1
+      # The image's own default user is `builder` (Chapter 3's
+      # local bind-mount ownership fix). The hosted runner's
+      # workspace and cache mounts are root-owned, so a
+      # container job must run as root or its first steps
+      # (checkout, cache restore, the /ws symlink) cannot
+      # write anywhere. Local use keeps `builder`; the port
+      # to Actions is where the override belongs.
+      options: --user root
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
