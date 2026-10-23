@@ -1,4 +1,4 @@
-// Jenkinsfile — Chapter 7 state: matrix, versioning, manifest.
+// Jenkinsfile — Chapter 8 state: the pipeline signs what it ships.
 //
 // Grown chapter by chapter, never replaced:
 //   Ch 5  build + archive            Ch 8  sign + verify
@@ -102,19 +102,34 @@ pipeline {
         // doesn't save on a two-core desk machine.
         stage('Build matrix') {
             parallel {
-                stage('Build firmware') {
+                stage('Build & sign') {
                     agent { docker { image "${TOOLCHAIN_IMAGE}"; args "-v ${NCS_WS}:/ws" } }
                     steps {
-                        // Until Chapter 8 the build signs with the
-                        // development key from the tree — the lab
-                        // names that debt out loud; this stage is
-                        // where it gets paid.
-                        sh '''
-                            cd /ws
-                            west build -p always -b "$BOARD" \
-                                -d "$WORKSPACE/build" --sysbuild "$WORKSPACE/app" \
-                                -- -DZEPHYR_EXTRA_MODULES=/ws/ncs-zigbee
-                        '''
+                // The signing key arrives as a bound FILE
+                // credential (Chapter 8): Jenkins places it at a
+                // private path, masks it in the log, and removes
+                // it when the stage ends. The key itself is never
+                // in this repo, this file, or any console log.
+                withCredentials([file(credentialsId: 'mcuboot-product-key',
+                                      variable: 'SIGNING_KEY')]) {
+                    sh '''
+                        cd /ws
+                        west build -p always -b "$BOARD" \
+                            -d "$WORKSPACE/build" --sysbuild "$WORKSPACE/app" \
+                            -- -DZEPHYR_EXTRA_MODULES=/ws/ncs-zigbee \
+                               -DSB_CONFIG_BOOT_SIGNATURE_KEY_FILE="$SIGNING_KEY"
+                    '''
+                }
+                // Trust, then verify — in that order, every run:
+                // an artifact that fails signature verification
+                // fails the build, before anything is archived.
+                // (The PUBLIC key may live in the repo; it is the
+                // private half that is the crown jewel.) imgtool
+                // itself is MCUboot's own script from the workspace
+                // — the same code that just signed the image.
+                        sh 'python3 /ws/bootloader/mcuboot/scripts/imgtool.py verify -k keys/product-key.pub.pem build/app/zephyr/zephyr.signed.bin'
+                        stash name: 'signed-image',
+                              includes: 'build/app/zephyr/zephyr.signed.bin'
                     }
                 }
 
