@@ -1,49 +1,82 @@
-// Jenkinsfile — Chapter 6 state: gates and tests join the pipeline.
+// Jenkinsfile — Chapter 7 state: matrix, versioning, manifest.
 //
-// Order is economics: the fastest failures run first. A format
-// violation costs seconds, a unit test a minute, the full firmware
-// build several — so the pipeline asks its questions cheapest-first,
-// and a red build tells you at which stage to start reading.
+// Grown chapter by chapter, never replaced:
+//   Ch 5  build + archive            Ch 8  sign + verify
+//   Ch 6  gates + unit tests         Ch 9  tag -> approval -> release
+//   Ch 7  version + matrix + manifest   Ch 10  hardware-in-the-loop
 pipeline {
     agent none
 
+    options {
+        // One run at a time: a concurrent run lands in a
+        // '<job>@2' workspace, and the '@' in that path breaks
+        // Zephyr's devicetree dependency parsing (Ch 7) — and
+        // two runs stamping versions at once is a race nobody
+        // needs. Queue, don't race.
+        disableConcurrentBuilds()
+        // Disk is not an archive strategy (Chapter 7): keep the
+        // newest 20 runs' artifacts; the manifest of everything
+        // older is one JSON file per run and costs nothing to keep.
+        buildDiscarder(logRotator(artifactNumToKeepStr: '20'))
+    }
+
     environment {
         TOOLCHAIN_IMAGE = 'toolchain:1.0.0-ncs3.4.1'
+        // Your Course 1 workspace on the Jenkins machine (Ch 5).
         NCS_WS = '/home/jenkins/ncs-course'
+        BOARD = 'nrf52840dk/nrf52840'
     }
 
     stages {
-        stage('Gates') {
-            agent {
-                docker {
-                    image "${TOOLCHAIN_IMAGE}"
-                    args "-v ${NCS_WS}:/ws"
+        stage('Resolve') {
+            // Runs on the Jenkins node itself (not in a container):
+            // identify the toolchain image this run will use, by
+            // digest when it came from a registry, by image ID when
+            // it was built locally. The manifest records it — an
+            // artifact that cannot name its build machine is not
+            // provenance, it is a rumour.
+            agent any
+            steps {
+                script {
+                    env.TOOLCHAIN_REF = sh(
+                        script: """docker image inspect \
+                            -f '{{if .RepoDigests}}{{index .RepoDigests 0}}{{else}}${TOOLCHAIN_IMAGE}@{{.Id}}{{end}}' \
+                            ${TOOLCHAIN_IMAGE}""",
+                        returnStdout: true).trim()
                 }
             }
+        }
+
+        stage('Version') {
+            agent { docker { image "${TOOLCHAIN_IMAGE}"; args "-v ${NCS_WS}:/ws" } }
             steps {
-                // Format: the codebase took its one-time reformat
-                // commit in Chapter 6's lab; from here the gate
-                // holds the line. Static analysis: scoped to the
-                // parser module — start where it is clean, expand
-                // deliberately (the chapter explains why).
+                // The tag is the truth (Chapter 7): derive the
+                // version, stamp it into app/VERSION, and keep it
+                // for every later stage and the manifest.
+                sh 'tools/stamp-version.sh > .version'
+                script { env.PRODUCT_VERSION = readFile('.version').trim() }
+            }
+        }
+
+        stage('Gates') {
+            agent { docker { image "${TOOLCHAIN_IMAGE}"; args "-v ${NCS_WS}:/ws" } }
+            steps {
+                // Fastest failures first (Chapter 6). A gate that
+                // cannot fail is a poster, not a gate — each of
+                // these was armed by breaking it once in the lab.
                 sh 'clang-format --dry-run --Werror app/src/*.c app/src/*.h app/tests/ld2410_parser/src/*.c'
                 sh 'cppcheck --enable=warning,performance,portability --error-exitcode=1 --suppress=missingIncludeSystem --inline-suppr app/src/ld2410_parser.c'
             }
         }
 
         stage('Unit tests') {
-            agent {
-                docker {
-                    image "${TOOLCHAIN_IMAGE}"
-                    args "-v ${NCS_WS}:/ws"
-                }
-            }
+            agent { docker { image "${TOOLCHAIN_IMAGE}"; args "-v ${NCS_WS}:/ws" } }
             steps {
-                // The 64-bit native_sim — the 32-bit variant needs
-                // a multilib host runtime and dies silently without
-                // it (Chapter 6). The outdir is a SUBDIRECTORY of
-                // the mounted workspace: Twister recycles its
-                // outdir, and a mount root cannot be recycled.
+                // Twister on the 64-bit native_sim (Chapter 6
+                // explains the 32-bit multilib trap). The outdir
+                // lives in a SUBDIRECTORY of the workspace mount —
+                // Twister recycles its outdir and a mount root
+                // cannot be recycled.
                 sh '''
                     cd /ws
                     west twister -T "$WORKSPACE/app/tests" \
@@ -53,34 +86,78 @@ pipeline {
             }
             post {
                 always {
+                    // Test results are build DATA, not log text:
+                    // Jenkins graphs them, trends them, and points
+                    // at the failing case by name.
                     junit 'twister-out/twister.xml'
                 }
             }
         }
 
-        stage('Build firmware') {
-            agent {
-                docker {
-                    image "${TOOLCHAIN_IMAGE}"
-                    args "-v ${NCS_WS}:/ws"
+        // The matrix (Chapter 7): the product's two build legs in
+        // parallel — the DK product and the dongle coordinator.
+        // They share nothing but the workspace mount and the
+        // toolchain image, which is exactly when parallel helps;
+        // the chapter is honest about the wall-clock it does and
+        // doesn't save on a two-core desk machine.
+        stage('Build matrix') {
+            parallel {
+                stage('Build firmware') {
+                    agent { docker { image "${TOOLCHAIN_IMAGE}"; args "-v ${NCS_WS}:/ws" } }
+                    steps {
+                        // Until Chapter 8 the build signs with the
+                        // development key from the tree — the lab
+                        // names that debt out loud; this stage is
+                        // where it gets paid.
+                        sh '''
+                            cd /ws
+                            west build -p always -b "$BOARD" \
+                                -d "$WORKSPACE/build" --sysbuild "$WORKSPACE/app" \
+                                -- -DZEPHYR_EXTRA_MODULES=/ws/ncs-zigbee
+                        '''
+                    }
                 }
-            }
-            steps {
-                sh '''
-                    cd /ws
-                    west build -p always -b nrf52840dk/nrf52840 \
-                        -d "$WORKSPACE/build" --sysbuild "$WORKSPACE/app" \
-                        -- -DZEPHYR_EXTRA_MODULES=/ws/ncs-zigbee
-                '''
+
+                stage('Coordinator (dongle)') {
+                    agent { docker { image "${TOOLCHAIN_IMAGE}"; args "-v ${NCS_WS}:/ws" } }
+                    steps {
+                        // The matrix's second leg (Chapter 7):
+                        // Course 1's shell-sample coordinator for
+                        // the dongle, USB variant — the other half
+                        // of the product.
+                        sh '''
+                            cd /ws
+                            west build -p always -b nrf52840dongle/nrf52840 \
+                                -d "$WORKSPACE/build-coord" ncs-zigbee/samples/shell \
+                                -- -DZEPHYR_EXTRA_MODULES=/ws/ncs-zigbee -DFILE_SUFFIX=usb
+                        '''
+                    }
+                }
             }
         }
 
-        stage('Archive') {
-            agent any
+        stage('Manifest & archive') {
+            agent { docker { image "${TOOLCHAIN_IMAGE}"; args "-v ${NCS_WS}:/ws" } }
             steps {
-                archiveArtifacts artifacts: 'build/app/zephyr/zephyr.signed.bin,build/app/zephyr/zephyr.signed.hex,build/app/zephyr/zephyr.elf,build/dfu_application.zip,build/*.zigbee',
+                sh '''
+                    python3 tools/make-manifest.py \
+                        --version "$PRODUCT_VERSION" \
+                        --board "$BOARD" \
+                        --toolchain-image "$TOOLCHAIN_REF" \
+                        --out build/manifest.json \
+                        build/app/zephyr/zephyr.signed.bin \
+                        build/app/zephyr/zephyr.signed.hex \
+                        build/app/zephyr/zephyr.elf \
+                        build/dfu_application.zip \
+                        build/*.zigbee \
+                        build-coord/shell/zephyr/zephyr.hex
+                '''
+                archiveArtifacts artifacts: 'build/app/zephyr/zephyr.signed.bin,build/app/zephyr/zephyr.signed.hex,build/app/zephyr/zephyr.elf,build/dfu_application.zip,build/*.zigbee,build-coord/shell/zephyr/zephyr.hex,build/manifest.json',
                                  fingerprint: true
             }
         }
+
+
+
     }
 }
