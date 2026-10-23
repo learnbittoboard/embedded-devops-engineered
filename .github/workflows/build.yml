@@ -139,7 +139,7 @@ jobs:
           west build -p always -b nrf52840dk/nrf52840 \
             -d "$GITHUB_WORKSPACE/build" --sysbuild "$GITHUB_WORKSPACE/app" \
             -- -DZEPHYR_EXTRA_MODULES=/ws/ncs-zigbee \
-               -DSB_CONFIG_BOOT_SIGNATURE_KEY_FILE="$RUNNER_TEMP/product-key.pem"
+               -DSB_CONFIG_BOOT_SIGNATURE_KEY_FILE=\"$RUNNER_TEMP/product-key.pem\"
           rm -f "$RUNNER_TEMP/product-key.pem"
 
       - name: Verify signatures

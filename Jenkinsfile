@@ -117,7 +117,7 @@ pipeline {
                         west build -p always -b "$BOARD" \
                             -d "$WORKSPACE/build" --sysbuild "$WORKSPACE/app" \
                             -- -DZEPHYR_EXTRA_MODULES=/ws/ncs-zigbee \
-                               -DSB_CONFIG_BOOT_SIGNATURE_KEY_FILE="$SIGNING_KEY"
+                               -DSB_CONFIG_BOOT_SIGNATURE_KEY_FILE=\"$SIGNING_KEY\"
                     '''
                 }
                 // Trust, then verify — in that order, every run:
