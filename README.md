@@ -8,15 +8,15 @@ including the moment a broken commit turns a stage red and stops the line.*
 
 ## Start here
 
-**The full guided project lives at [Bit to Board](https://bittoboard.com/#/embedded-devops)** —
+**The full guided project lives at [Bit to Board](https://bittoboard.com/embedded-devops/)** —
 this repository is its companion code, public so you can inspect exactly what
 you will build before deciding anything. Bit to Board is project-based
 learning: you learn embedded systems by building real projects end to end.
 
-- **The project:** [Embedded DevOps, Engineered](https://bittoboard.com/#/embedded-devops) — the guided build this repo belongs to.
-- **The firmware's own course:** [Zigbee, Engineered](https://bittoboard.com/#/zigbee-engineered), with its code in [zigbee-engineered](https://github.com/learnbittoboard/zigbee-engineered).
-- **Free, in full:** the [Guides](https://bittoboard.com/#/guides) — full-depth procedures in the same style as the lessons.
-- **New releases and posts:** the [Bit to Board newsletter](https://bittoboard.com/#/newsletter) — one email when there is something worth saying.
+- **The project:** [Embedded DevOps, Engineered](https://bittoboard.com/embedded-devops/) — the guided build this repo belongs to.
+- **The firmware's own course:** [Zigbee, Engineered](https://bittoboard.com/zigbee-engineered/), with its code in [zigbee-engineered](https://github.com/learnbittoboard/zigbee-engineered).
+- **Free, in full:** the [Guides](https://bittoboard.com/guides/) — full-depth procedures in the same style as the lessons.
+- **New releases and posts:** the [Bit to Board newsletter](https://bittoboard.com/newsletter/) — one email when there is something worth saying.
 
 ## What this repo is
 
