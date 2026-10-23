@@ -1,0 +1,40 @@
+# Publish the toolchain image to GHCR — Chapter 11.
+#
+# The image students build locally in Chapters 2-3 becomes the
+# shared build machine for GitHub Actions. It rebuilds only when
+# its definition changes (the Dockerfile or the requirements
+# closure) or when a maintainer dispatches it by hand — the image
+# is infrastructure, and infrastructure changes deliberately.
+name: toolchain-image
+
+on:
+  push:
+    paths:
+      - Dockerfile
+      - docker/**
+      - .github/workflows/toolchain-image.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/toolchain:1.0.0-ncs3.4.1

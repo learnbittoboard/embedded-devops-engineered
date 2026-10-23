@@ -1,0 +1,134 @@
+# The pipeline, ported — Chapter 11.
+#
+# The same factory as the Jenkinsfile, re-expressed: jobs are
+# stages, steps are steps, `needs` is stage order. Same toolchain
+# image (pulled from GHCR), same gates, same tests, same version
+# rule, same manifest. Chapter 11 walks the two files side by side
+# and keeps score honestly.
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/${{ github.repository_owner }}/toolchain:1.0.0-ncs3.4.1
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0        # stamp-version.sh needs tags + history
+
+      # The one structural difference from Jenkins: there is no
+      # permanent Jenkins machine with a workspace mounted. The
+      # workspace is created here and CACHED between runs, keyed
+      # on the pinned stack version — a cache miss costs a full
+      # west update (~15 min), a hit costs seconds. Chapter 11
+      # does this math out loud.
+      - name: Cache the NCS workspace
+        uses: actions/cache@v4
+        with:
+          path: /github/ws-cache
+          key: ncs-v3.4.1-${{ runner.os }}
+
+      - name: Prepare workspace
+        run: |
+          if [ ! -d /github/ws-cache/nrf ]; then
+            mkdir -p /github/ws-cache
+            cd /github/ws-cache
+            west init -m https://github.com/nrfconnect/sdk-nrf --mr v3.4.1
+            west update
+            git clone --depth 1 --branch v1.4.0 \
+              https://github.com/nrfconnect/sdk-zigbee /tmp/zigbee
+            cp -r /tmp/zigbee /github/ws-cache/ncs-zigbee
+          fi
+          ln -sfn /github/ws-cache /ws
+
+      - name: Version (the tag is the truth)
+        id: version
+        run: |
+          tools/stamp-version.sh > .version
+          echo "version=$(cat .version)" >> "$GITHUB_OUTPUT"
+
+      - name: Gates
+        run: |
+          clang-format --dry-run --Werror \
+            app/src/*.c app/src/*.h app/tests/ld2410_parser/src/*.c
+          cppcheck --enable=warning,performance,portability \
+            --error-exitcode=1 --suppress=missingIncludeSystem \
+            --inline-suppr app/src/ld2410_parser.c
+
+      - name: Unit tests (Twister)
+        run: |
+          cd /ws
+          west twister -T "$GITHUB_WORKSPACE/app/tests" \
+            -p native_sim/native/64 \
+            --outdir "$GITHUB_WORKSPACE/twister-out"
+
+      - name: Publish test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: twister-results
+          path: twister-out/twister.xml
+
+      - name: Build & sign
+        env:
+          SIGNING_KEY_PEM: ${{ secrets.MCU_PRODUCT_KEY }}
+        run: |
+          # Same custody rule as Chapter 8: the private key exists
+          # only as a secret, lands on disk only for this step,
+          # and never enters the log (GitHub masks secret values).
+          umask 077
+          printf '%s' "$SIGNING_KEY_PEM" > "$RUNNER_TEMP/product-key.pem"
+          cd /ws
+          west build -p always -b nrf52840dk/nrf52840 \
+            -d "$GITHUB_WORKSPACE/build" --sysbuild "$GITHUB_WORKSPACE/app" \
+            -- -DZEPHYR_EXTRA_MODULES=/ws/ncs-zigbee \
+               -DSB_CONFIG_BOOT_SIGNATURE_KEY_FILE="$RUNNER_TEMP/product-key.pem"
+          rm -f "$RUNNER_TEMP/product-key.pem"
+
+      - name: Verify signatures
+        run: |
+          python3 /ws/bootloader/mcuboot/scripts/imgtool.py verify \
+            -k keys/product-key.pub.pem \
+            build/app/zephyr/zephyr.signed.bin
+
+      - name: Manifest & artifacts
+        run: |
+          python3 tools/make-manifest.py \
+            --version "${{ steps.version.outputs.version }}" \
+            --board nrf52840dk/nrf52840 \
+            --toolchain-image "ghcr.io/${{ github.repository_owner }}/toolchain:1.0.0-ncs3.4.1" \
+            --out build/manifest.json \
+            build/app/zephyr/zephyr.signed.bin \
+            build/app/zephyr/zephyr.signed.hex \
+            build/app/zephyr/zephyr.elf \
+            build/dfu_application.zip \
+            build/*.zigbee
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          # Chapter 7's naming rule, unchanged: product, version,
+          # commit — a name that answers "what exactly is this?"
+          name: occupancy-${{ steps.version.outputs.version }}-${{ github.sha }}
+          path: |
+            build/app/zephyr/zephyr.signed.bin
+            build/app/zephyr/zephyr.signed.hex
+            build/app/zephyr/zephyr.elf
+            build/dfu_application.zip
+            build/*.zigbee
+            build/manifest.json
+          retention-days: 90
