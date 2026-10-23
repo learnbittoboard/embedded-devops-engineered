@@ -207,9 +207,16 @@ jobs:
 
       - name: Assemble the bundle
         run: |
+          # upload-artifact preserves the directory structure
+          # from the least common ancestor of the uploaded paths
+          # (build/), so the signed images download under
+          # app/zephyr/ while the archives land at the top level.
+          # The first hosted assembly assumed a flat layout and
+          # failed on its first cp; these paths are the real ones.
           mkdir -p build/app/zephyr release
-          cp build-assets/zephyr.signed.bin build-assets/zephyr.signed.hex \
-             build-assets/zephyr.elf build/app/zephyr/
+          cp build-assets/app/zephyr/zephyr.signed.bin \
+             build-assets/app/zephyr/zephyr.signed.hex \
+             build-assets/app/zephyr/zephyr.elf build/app/zephyr/
           cp build-assets/dfu_application.zip build/
           cp build-assets/*.zigbee build/
           cp build-assets/manifest.json build/
