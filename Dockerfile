@@ -1,4 +1,5 @@
 # The course toolchain image — Embedded DevOps, Engineered.
+# (Published to GHCR by .github/workflows/toolchain-image.yml — Chapter 11.)
 #
 # This file IS the build machine, as source code: the exact compiler,
 # SDK and Python tools that build the product, frozen into an image

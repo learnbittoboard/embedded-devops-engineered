@@ -5,6 +5,17 @@
 # image (pulled from GHCR), same gates, same tests, same version
 # rule, same manifest. Chapter 11 walks the two files side by side
 # and keeps score honestly.
+#
+# The release is a JOB IN THIS WORKFLOW, not a second workflow:
+# it declares `needs: build`, so it runs only after the build of
+# THIS commit, in THIS run, has gone green — and the artifacts it
+# publishes are the ones that same run uploaded, downloaded with
+# no cross-run lookup at all. (The course's first draft had a
+# separate release workflow downloading "the build's" artifacts
+# by pattern: actions/download-artifact in a fresh run sees only
+# that run's own artifacts, so the bundle could never have been
+# assembled. One workflow, dependent jobs, is the fix — and the
+# chapter now tells that story, because it is the instructive one.)
 name: build
 
 on:
@@ -83,15 +94,39 @@ jobs:
           name: twister-results
           path: twister-out/twister.xml
 
+      # Pull requests get a build of their own — unsigned. The
+      # product signing key is a release asset, not a CI
+      # convenience: no step that runs for a pull request (a fork's
+      # pull request above all) may touch it. A PR build answers
+      # "does it compile and pass the gates?"; signing answers
+      # "is this fit to ship?", and only the pipeline's own pushes
+      # and tags get to ask it.
+      - name: Build (pull request — unsigned)
+        if: github.event_name == 'pull_request'
+        run: |
+          cd /ws
+          west build -p always -b nrf52840dk/nrf52840 \
+            -d "$GITHUB_WORKSPACE/build" --sysbuild "$GITHUB_WORKSPACE/app" \
+            -- -DZEPHYR_EXTRA_MODULES=/ws/ncs-zigbee
+
       - name: Build & sign
+        if: github.event_name != 'pull_request'
         env:
           SIGNING_KEY_PEM: ${{ secrets.MCU_PRODUCT_KEY }}
         run: |
           # Same custody rule as Chapter 8: the private key exists
           # only as a secret, lands on disk only for this step,
           # and never enters the log (GitHub masks secret values).
+          # The cleanup is a trap registered BEFORE the build:
+          # GitHub runs step scripts with bash -e, so a failed
+          # build exits immediately — a plain `rm` after the build
+          # would never run, and on a self-hosted runner the key
+          # would still be sitting in $RUNNER_TEMP afterwards.
+          # The EXIT trap fires on every way out of the step:
+          # success, build failure, or interruption.
           umask 077
           printf '%s' "$SIGNING_KEY_PEM" > "$RUNNER_TEMP/product-key.pem"
+          trap 'rm -f "$RUNNER_TEMP/product-key.pem"' EXIT
           cd /ws
           west build -p always -b nrf52840dk/nrf52840 \
             -d "$GITHUB_WORKSPACE/build" --sysbuild "$GITHUB_WORKSPACE/app" \
@@ -100,12 +135,14 @@ jobs:
           rm -f "$RUNNER_TEMP/product-key.pem"
 
       - name: Verify signatures
+        if: github.event_name != 'pull_request'
         run: |
           python3 /ws/bootloader/mcuboot/scripts/imgtool.py verify \
             -k keys/product-key.pub.pem \
             build/app/zephyr/zephyr.signed.bin
 
       - name: Manifest & artifacts
+        if: github.event_name != 'pull_request'
         run: |
           python3 tools/make-manifest.py \
             --version "${{ steps.version.outputs.version }}" \
@@ -119,6 +156,7 @@ jobs:
             build/*.zigbee
 
       - name: Upload artifacts
+        if: github.event_name != 'pull_request'
         uses: actions/upload-artifact@v4
         with:
           # Chapter 7's naming rule, unchanged: product, version,
@@ -132,3 +170,45 @@ jobs:
             build/*.zigbee
             build/manifest.json
           retention-days: 90
+
+  # Release on tag — Chapter 11's mirror of Chapter 9, as a
+  # dependent job of the build above. `needs: build` is the whole
+  # mechanism: this job starts only when the build job of the
+  # same run has succeeded, and is skipped — not failed late, not
+  # run on stale artifacts — when it has not. The job-level `if`
+  # confines it to tag pushes, and the publish step repeats the
+  # tag check on its own, so no edit to the job condition alone
+  # can turn a branch push into a published Release.
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write   # creating the Release — the only write in the course
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download this run's build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: occupancy-*
+          merge-multiple: true
+          path: build-assets
+
+      - name: Assemble the bundle
+        run: |
+          mkdir -p build/app/zephyr release
+          cp build-assets/zephyr.signed.bin build-assets/zephyr.signed.hex \
+             build-assets/zephyr.elf build/app/zephyr/
+          cp build-assets/dfu_application.zip build/
+          cp build-assets/*.zigbee build/
+          cp build-assets/manifest.json build/
+          tools/make-release.sh build release
+
+      - name: Publish the Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: tools/publish-release.sh release

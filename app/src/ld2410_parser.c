@@ -67,6 +67,18 @@ static bool handle_payload(struct ld2410_parser *p, struct ld2410_report *out)
 		return false;
 	}
 
+	/* The protocol has no checksum, so the markers above are not
+	 * enough: the target-state byte can still be anything the wire
+	 * (or a fault) invents. Only 0..3 name a target (the enum
+	 * below); anything else is a malformed frame. Reject it here,
+	 * at the trust boundary, before the value can be published as
+	 * a reading and used to index lookup tables by callers.
+	 */
+	if (p->payload[2] > LD2410_PARSER_TARGET_BOTH) {
+		parser_abort(p);
+		return false;
+	}
+
 	if (out != NULL) {
 		out->target = (enum ld2410_parser_target)p->payload[2];
 		out->move_distance_cm = get_le16(&p->payload[3]);

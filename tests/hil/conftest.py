@@ -3,15 +3,33 @@
 Two transports, one test suite:
 
 * A real board: pyserial on --port (or $HIL_PORT). The session
-  fixture optionally flashes --firmware with nrfutil first — the
-  pipeline passes the exact signed image it built, so the suite
-  interrogates the artifact, not a cousin of it.
+  fixture flashes --firmware (the signed .hex the pipeline built —
+  a .hex carries its load addresses, so `nrfutil device program`
+  can place it; a raw .bin cannot say where it belongs) and then
+  interrogates the board. The pipeline passes the exact artifact
+  it built, so the suite tests the artifact, not a cousin of it.
 * A recorded transcript: --transcript FILE (or $HIL_TRANSCRIPT)
-  replays a captured serial session through the same read/write
-  interface. This is how the suite is developed and debugged
-  without the rig — and how the course's authoring verified the
-  test LOGIC. The physical rig remains a desk check; Chapter 10
-  says so in plain words.
+  replays a captured serial session. With --stream, the recording
+  is played as ONE continuous, non-rewinding stream — the mode
+  that matches live serial. This is how the suite is developed
+  and debugged without the rig — and how the course's authoring
+  verified the test LOGIC. The physical rig remains a desk check;
+  Chapter 10 says so in plain words.
+
+Required mode (--require-hardware): the pipeline's HIL stage runs
+this way. Missing --port, --firmware or --expect-version is a
+FAILURE, not a skip: a required stage that skips everything and
+exits 0 is a green checkmark that tested nothing. Skips exist
+only for local, non-required use (transcript debugging, deciding
+not to run the version test, and so on).
+
+One stream, one capture: a live serial port cannot rewind, so
+the harness never pretends it can. The session fixture captures
+the boot log ONCE, into console.boot_seen, and the boot
+assertions (banner, prompt, faults) read that capture. Tests
+that talk to the shell afterwards drive commands over the same
+continuous session. Transcript devices follow the same rule:
+there is no reset/rewind, in either mode.
 
 Transcript format: the literal serial text. A line starting with
 ">>> " marks a command the operator typed; the lines after it,
@@ -37,15 +55,26 @@ def pytest_addoption(parser):
                      help="serial port of the DK (e.g. /dev/ttyACM0)")
     parser.addoption("--transcript", default=os.environ.get("HIL_TRANSCRIPT"),
                      help="recorded serial transcript to replay")
+    parser.addoption("--stream", action="store_true",
+                     help="replay the transcript as ONE continuous "
+                          "non-rewinding stream (live-serial semantics)")
     parser.addoption("--firmware", default=None,
                      help="signed .hex to flash before testing")
     parser.addoption("--expect-version",
                      default=os.environ.get("PRODUCT_VERSION"),
                      help="version the boot banner must report")
+    parser.addoption("--require-hardware", action="store_true",
+                     help="required mode: missing port/firmware/version "
+                          "fails the run instead of skipping tests")
 
 
 class TranscriptDevice:
-    """A serial-shaped replay of a recorded session."""
+    """A serial-shaped replay of a recorded session.
+
+    Deliberately has NO rewind: lines are consumed once, in
+    order, exactly like a live port. Commands written by a test
+    release their recorded responses, in order, once.
+    """
 
     def __init__(self, path):
         self.boot_lines = []
@@ -58,10 +87,6 @@ class TranscriptDevice:
                     current = self.responses.setdefault(line[4:].strip(), [])
                 else:
                     current.append(line)
-        self._queue = list(self.boot_lines)
-        self._pending = ""
-
-    def reset(self):
         self._queue = list(self.boot_lines)
         self._pending = ""
 
@@ -86,6 +111,7 @@ class Console:
     def __init__(self, dev):
         self.dev = dev
         self.seen = []
+        self.boot_seen = []
 
     def send(self, cmd):
         self.dev.write((cmd + "\n").encode())
@@ -109,15 +135,49 @@ class Console:
             + "\n".join(self.seen[-20:])
         )
 
+    def capture_boot(self, timeout=15.0):
+        """Read the boot log ONCE, up to the first shell prompt.
+
+        The captured lines are kept in .boot_seen; the boot
+        assertions read the capture instead of re-reading a
+        stream that has already flowed past.
+        """
+        self.expect(r"uart:~\$", timeout=timeout)
+        self.boot_seen = list(self.seen)
+        return self.boot_seen
+
 
 @pytest.fixture(scope="session")
 def device(pytestconfig):
     port = pytestconfig.getoption("--port")
     transcript = pytestconfig.getoption("--transcript")
     firmware = pytestconfig.getoption("--firmware")
+    expect_version = pytestconfig.getoption("--expect-version")
+    require = pytestconfig.getoption("--require-hardware")
+
+    if require:
+        # The pipeline's contract: all three inputs, or the stage
+        # fails loudly. (Transcript mode is never required mode:
+        # it verifies test logic, not hardware.)
+        missing = [name for name, val in
+                   (("--port", port), ("--firmware", firmware),
+                    ("--expect-version", expect_version)) if not val]
+        if missing:
+            pytest.fail(
+                "required HIL run is missing " + ", ".join(missing) +
+                " — refusing to report a green stage that tested nothing",
+                pytrace=False)
+        if firmware and not firmware.endswith(".hex"):
+            pytest.fail(
+                f"--firmware must be the signed .hex (it carries its "
+                f"load addresses); got {firmware}",
+                pytrace=False)
 
     if port:
         if serial is None:
+            if require:
+                pytest.fail("pyserial not installed on this rig",
+                            pytrace=False)
             pytest.skip("pyserial not installed on this rig")
         if firmware:
             # Flash the artifact under test, then reset into it.
@@ -140,16 +200,24 @@ def device(pytestconfig):
         pytest.skip("no --port and no --transcript: nowhere to run")
 
 
-@pytest.fixture()
+@pytest.fixture(scope="session")
 def console(device):
-    if isinstance(device, TranscriptDevice):
-        device.reset()
-    return Console(device)
+    """One console for the whole session, over one stream.
+
+    Creating it captures the boot log exactly once; every test
+    then works from that capture and/or the live session.
+    """
+    con = Console(device)
+    con.capture_boot()
+    return con
 
 
 @pytest.fixture(scope="session")
 def expected_version(pytestconfig):
     v = pytestconfig.getoption("--expect-version")
     if not v:
+        if pytestconfig.getoption("--require-hardware"):
+            pytest.fail("required HIL run has no --expect-version",
+                        pytrace=False)
         pytest.skip("no --expect-version given: version test cannot run")
     return v

@@ -178,6 +178,35 @@ ZTEST(ld2410_parser, test_bad_payload_marker_rejected)
 	zassert_equal(p.frames_ok, 0);
 }
 
+ZTEST(ld2410_parser, test_invalid_target_state_rejected)
+{
+	/* A correctly framed packet whose target-state byte is 255.
+	 * The protocol has no checksum, so framing alone cannot rule
+	 * this out: every marker is right, the length is right, the
+	 * footer is right — and the payload still names a target that
+	 * does not exist. The parser must reject it (one resync, no
+	 * report) instead of publishing a reading whose target the
+	 * application would use to index a 4-entry lookup table.
+	 */
+	struct ld2410_parser p;
+	uint8_t payload[13];
+	uint8_t frame[32];
+
+	memcpy(payload, basic_payload, sizeof(payload));
+	payload[2] = 0xFF; /* target state 255: not a target */
+
+	ld2410_parser_init(&p);
+	size_t n = build_frame(frame, payload, 13);
+
+	zassert_equal(feed_all(&p, frame, n, NULL), 0, "no report for target 255");
+	zassert_equal(p.frames_ok, 0);
+	zassert_equal(p.resyncs, 1, "a malformed frame costs a resync");
+
+	n = build_frame(frame, basic_payload, 13);
+	zassert_equal(feed_all(&p, frame, n, NULL), 1, "next valid frame decodes");
+	zassert_equal(p.frames_ok, 1);
+}
+
 ZTEST(ld2410_parser, test_engineering_frame_counted_not_decoded)
 {
 	struct ld2410_parser p;
