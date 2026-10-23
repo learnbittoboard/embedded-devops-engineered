@@ -412,8 +412,7 @@ static int cmd_presence(const struct shell *sh, size_t argc, char **argv)
 		 * indexed by a value that arrived over a wire without a
 		 * bounds check at the point of use as well.
 		 */
-		shell_print(sh, "presence : YES (%s)",
-			    target_words[(r.target < 4) ? r.target : 0]);
+		shell_print(sh, "presence : YES (%s)", target_words[(r.target < 4) ? r.target : 0]);
 		shell_print(sh, "distance : %u cm", ld2410_headline_distance_cm(&r));
 	}
 
