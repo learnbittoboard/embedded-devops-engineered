@@ -1,4 +1,4 @@
-// Jenkinsfile — Chapter 9 state: the release pipeline joins.
+// Jenkinsfile — the finished factory (end of Chapter 10).
 //
 // Grown chapter by chapter, never replaced:
 //   Ch 5  build + archive            Ch 8  sign + verify
@@ -172,6 +172,27 @@ pipeline {
             }
         }
 
+        stage('Hardware-in-the-loop') {
+            // The pipeline's ground truth (Chapter 10): flash the
+            // exact signed image this run built onto a real DK on
+            // the desk rig, and interrogate it over serial. Gated:
+            // the rig is one board — releases and nightly runs get
+            // it, every commit does not.
+            agent { label 'hil' }
+            when {
+                anyOf {
+                    tag 'v*'
+                    triggeredBy 'TimerTrigger'
+                }
+            }
+            steps {
+                unstash 'signed-image'
+                sh 'python3 -m pytest tests/hil --junitxml=hil-results.xml'
+            }
+            post {
+                always { junit 'hil-results.xml' }
+            }
+        }
 
         stage('Release') {
             agent any

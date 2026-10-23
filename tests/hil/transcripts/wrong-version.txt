@@ -1,0 +1,11 @@
+[00:00:00.228,000] <inf> ld2410: LD2410 driver started (basic reporting mode expected)
+[00:00:00.409,000] <inf> main: Starting Zigbee, Engineered - occupancy product, firmware v1.2.0
+[00:00:00.412,000] <inf> main: Endpoint 10 live: Occupancy drives the bound bulb via On/Off client
+uart:~$
+>>> presence
+presence : YES (stationary)
+distance : 132 cm
+attribute: Occupancy = 1 (OCCUPIED)
+bulb     : last commanded ON
+frames   : 42 parsed, 0 resyncs, 0 dropped bytes, 0 engineering frames
+uart:~$

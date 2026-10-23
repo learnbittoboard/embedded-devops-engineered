@@ -1,0 +1,5 @@
+# The HIL rig's Python environment (Chapter 10): a venv on the rig
+# machine, deliberately tiny. pytest runs the suite and emits the
+# JUnit XML Jenkins publishes; pyserial is the wire.
+pytest>=8
+pyserial>=3.5
