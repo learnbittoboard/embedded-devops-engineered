@@ -1,4 +1,4 @@
-// Jenkinsfile — Chapter 8 state: the pipeline signs what it ships.
+// Jenkinsfile — Chapter 9 state: the release pipeline joins.
 //
 // Grown chapter by chapter, never replaced:
 //   Ch 5  build + archive            Ch 8  sign + verify
@@ -173,6 +173,19 @@ pipeline {
         }
 
 
-
+        stage('Release') {
+            agent any
+            when { tag 'v*' }
+            steps {
+                // Automation proposes; a human disposes (Chapter 9).
+                input message: "Publish release ${env.PRODUCT_VERSION}?",
+                      ok: 'Publish'
+                withCredentials([string(credentialsId: 'github-token',
+                                        variable: 'GH_TOKEN')]) {
+                    sh 'tools/make-release.sh build release'
+                    sh 'tools/publish-release.sh release'
+                }
+            }
+        }
     }
 }
