@@ -1,0 +1,27 @@
+# Jenkins, stood up as code — Chapter 4 of Embedded DevOps, Engineered.
+#
+# `docker compose up -d` is the entire install. The controller's home
+# lives on a named volume so the factory — jobs, credentials, build
+# history — survives the container being recreated; Chapter 4 proves
+# it by restarting the stack and logging back in.
+services:
+  jenkins:
+    build:
+      context: ./jenkins
+    image: course-jenkins:2.580.1
+    container_name: course-jenkins
+    ports:
+      - "8080:8080"
+      - "50000:50000"
+    volumes:
+      # The factory's memory. Named volume: Docker manages the
+      # storage; the volume's name is the backup target.
+      - jenkins_home:/var/jenkins_home
+      # The controller drives the HOST Docker engine to run build
+      # containers (Chapter 5's docker agent). Mounting the socket
+      # is handing Jenkins the keys to the engine — Chapter 4's
+      # security section is about exactly this line.
+      - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  jenkins_home:

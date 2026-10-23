@@ -1,0 +1,9 @@
+# The course's plugin set — Chapter 4's intent list.
+# Five plugins, each earning its place in a named chapter:
+workflow-aggregator   # Pipeline itself (Chapters 5-10)
+docker-workflow       # pipelines that run stages in containers (Chapter 5)
+git                   # checkout from the product repo (Chapter 5)
+credentials-binding   # secrets as bound files/env, masked in logs (Chapter 8)
+junit                 # test reports as build data, not log text (Chapter 6)
+# The exact, frozen closure these five resolve to lives in
+# plugins-frozen.txt — that is the file the image installs.
