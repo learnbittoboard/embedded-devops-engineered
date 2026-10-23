@@ -1,0 +1,9 @@
+# The build context is the repo root; the image needs only the
+# Dockerfile's COPY sources. Everything else — build trees, the
+# Jenkins home, git internals — stays out of the context so it
+# cannot leak into a layer or poison the cache.
+build*/
+.dockerignore
+.git
+jenkins-home
+*.zip
