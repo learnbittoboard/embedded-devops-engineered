@@ -88,7 +88,7 @@ pipeline {
                 always {
                     // Test results are build DATA, not log text:
                     // Jenkins graphs them, trends them, and points
-                    // at the failing case by name.
+                    // at the failing configuration by name.
                     junit 'twister-out/twister.xml'
                 }
             }
